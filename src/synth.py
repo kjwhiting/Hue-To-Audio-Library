@@ -32,8 +32,8 @@ HEADROOM = 0.85            # global safety margin (do not push to 1.0)
 FADE_MS = 8                # fade-in/out (ms) to avoid clicks
 
 # Musical range guard (C2..C6)
-C2_HZ = 65.406392          # ~ C2
-C6_HZ = 1046.502261        # ~ C6
+C2_HZ = 60          # ~ C2
+C6_HZ = 1050        # ~ C6
 
 ALLOWED_VOICES = {"sine", "triangle", "bell"}
 

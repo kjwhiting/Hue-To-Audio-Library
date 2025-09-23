@@ -101,12 +101,12 @@ def test_image_to_pixel_hsv_basic_colors(tmp_path: Path):
     # Red: hue ~0 or 360, full saturation, full brightness -> code 6
     assert red.h_deg in (0, 360)
     assert red.s == 10_000
-    assert red.v == 6
+    assert red.v == 13
 
     # Green: hue ~120, full saturation, full brightness -> code 6
     assert 112 <= green.h_deg <= 240
     assert green.s == 10_000
-    assert green.v == 6
+    assert green.v == 13
 
     # Black: saturation 0, v_code 0 (rest)
     assert black.s == 0
@@ -114,7 +114,7 @@ def test_image_to_pixel_hsv_basic_colors(tmp_path: Path):
 
     # White: saturation 0, v_code max
     assert white.s == 0
-    assert white.v == 6
+    assert white.v == 13
 
 
 def test_image_to_pixel_hsv_order_and_length(tmp_path: Path):
@@ -137,4 +137,4 @@ def test_constructor_inverts_hue_on_store():
     px = PixelHSV(120, 5000, 0.75)
     assert 238 <= px.h_deg <= 242
     assert px.s == 5000
-    assert 4 <= px.v <= 6  # v depends on binning; 0.75 -> ceil(4.5)=5 typically
+    assert 4 <= px.v <= 11  # v depends on binning; 0.75 -> ceil(4.5)=5 typically

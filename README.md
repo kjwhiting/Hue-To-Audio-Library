@@ -26,10 +26,42 @@ All tests and test cases are include in the `/tests` folder. This doubles as doc
 `main.py` is the entry point for the program
 
 ## Running locally
-Install python and from the `/src` directory run this command in terminal window
+Install python and run this command to install pillow
 ```
-python main.py
+pip install Pillow, pytest
 ```
+
+### (optional) create the three test JPGs
+```python -m src.helper```
+### -> test_images/hues.jpg, test_images/values.jpg, test_images/saturations.jpg
+
+### run the composer on any JPG/PNG
+python -m src.main --image path/to/your.jpg --out song.wav --bpm 120 --voice-strategy hue --stride 1
+
+# Hues sweep (361 px)
+python -m src.main --image test_images/hues.jpg --out hues.wav --bpm 120 --voice-strategy hue --stride 1
+
+# Values (rests+notes across codes 0..13)
+python -m src.main --image test_images/values.jpg --out values.wav --bpm 120 --voice-strategy sine --stride 1
+
+# Saturations (10,001 px → use stride to shorten render time)
+python -m src.main --image test_images/saturations.jpg --out sats.wav --bpm 120 --voice-strategy triangle --stride 100
+
+# Built-in sample (no image; plays all voices & durations)
+python -m src.main --demo
+
+| Flag | Type  | Default | Allowed values | What it |
+| ------------------ | ------ | ---------------------------: | ---------------------------------------------- | ------------------------------------------------ |
+| `--image`, `-i`    | path   | *(required unless `--demo`)* | any JPG/PNG Pillow can open                 | Input image to sonify |
+| `--out`, `-o`      | path   |                 `output.wav` | file path                                      | Where to write the 16-bit mono WAV               |
+| `--bpm`            | int    |                        `120` | `>0`                                           | Tempo for converting duration codes to seconds   |
+| `--sr`             | int    |                      `44100` | common audio rates                             | Output sample rate                               |
+| `--voice-strategy` | choice |                        `hue` | `sine` · `triangle` · `bell` · `cycle` · `hue` | How the voice is chosen per pixel (see below)    |
+| `--stride`         | int    |                          `1` | `>=1`                                          | Use every Nth pixel (speed/length control)       |
+| `--demo`           | flag   |                          off | —                                              | Ignore `--image` and render a built-in demo file |
+
+
+
 
 To run the tests locally install `pytest` and run them with 
 ```
