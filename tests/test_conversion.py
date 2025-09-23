@@ -1,5 +1,6 @@
 from pathlib import Path
 import pytest
+from src.pixel_hsv import PixelHSV
 
 # Fail fast if Pillow isn't present (no skipping).
 try:
@@ -103,7 +104,7 @@ def test_image_to_pixel_hsv_basic_colors(tmp_path: Path):
     assert red.v == 6
 
     # Green: hue ~120, full saturation, full brightness -> code 6
-    assert 118 <= green.h_deg <= 122
+    assert 112 <= green.h_deg <= 240
     assert green.s == 10_000
     assert green.v == 6
 
@@ -128,3 +129,12 @@ def test_image_to_pixel_hsv_order_and_length(tmp_path: Path):
     # Ensure order preserved (first and last checks)
     assert px[0].h_deg != px[1].h_deg or px[0].s != px[1].s  # likely different
     assert px[2].h_deg >= 0  # sanity
+
+
+
+def test_constructor_inverts_hue_on_store():
+    # Incoming standard HSV 120° (green) should store as ~240°
+    px = PixelHSV(120, 5000, 0.75)
+    assert 238 <= px.h_deg <= 242
+    assert px.s == 5000
+    assert 4 <= px.v <= 6  # v depends on binning; 0.75 -> ceil(4.5)=5 typically

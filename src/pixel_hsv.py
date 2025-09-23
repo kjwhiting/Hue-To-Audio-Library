@@ -1,11 +1,18 @@
 import math
+from typing import Union
 from src.exceptions import OutsideAllowableRange
 
 
 class PixelHSV:
     """
-    Strict data container for a pixel's HSV, using integers for exact equality.
+    Strict data container for a pixel's HSV.
 
+    Assumptions:
+      - Incoming hue (h_deg) is in STANDARD HSV orientation (red=0°, green=120°, blue=240°).
+      - We invert hue on construction to better match the physical color spectrum direction
+        (violet→red), so stored h_deg is the inverted hue.
+
+    Stored fields:
     h_deg: Hue degrees [0..360]
     s:    Saturation [0..10_000]
     v:    Duration code [0..6]
@@ -16,21 +23,36 @@ class PixelHSV:
           4 = sixteenth
           5 = thirtysecond
           6 = sixtyfourth
+
+    Constructor accepts:
+      - v as float in [0,1]  -> converted to code via value_to_duration_code
+      - v as int   in [0,6]  -> stored directly
     """
 
     __slots__ = ("h_deg", "s", "v")
 
-    def __init__(self, h_deg: int, s: int, v: int) -> None:
+    def __init__(self, h_deg: int, s: int, v: Union[int, float]) -> None:
+        # Validate incoming HSV-scaled values
         if not (0 <= h_deg <= 360):
             raise OutsideAllowableRange(f"Hue {h_deg} outside 0–360")
         if not (0 <= s <= 10_000):
             raise OutsideAllowableRange(f"Saturation {s} outside 0–10_000")
-        if not (0 <= v <= 6):
-            raise OutsideAllowableRange(f"Value/duration code {v} outside 0–6")
 
-        self.h_deg = int(h_deg)
+        # Convert brightness to duration code if float was provided
+        if isinstance(v, float):
+            v_code = PixelHSV.value_to_duration_code(v)
+        elif isinstance(v, int):
+            v_code = v
+        else:
+            raise TypeError("v must be float (0..1) or int (0..6)")
+
+        if not (0 <= v_code <= 6):
+            raise OutsideAllowableRange(f"Value/duration code {v_code} outside 0–6")
+
+        # Normalize and invert hue on storage to match physical spectrum direction
+        self.h_deg = PixelHSV.hue_inversion(int(h_deg))
         self.s = int(s)
-        self.v = int(v)
+        self.v = int(v_code)
 
     def __repr__(self) -> str:
         return f"PixelHSV(h_deg={self.h_deg}, s={self.s}, v={self.v})"
@@ -43,7 +65,7 @@ class PixelHSV:
             and self.s == other.s
             and self.v == other.v
         )
-    
+
     @staticmethod
     def value_to_duration_code(v: float) -> int:
         """
@@ -60,3 +82,16 @@ class PixelHSV:
         if code > 6:
             return 6
         return code
+
+    @staticmethod
+    def hue_inversion(h_deg: int) -> int:
+        """
+        Reverse hue direction on the 0..360° wheel; 360 normalizes to 0.
+
+        Examples:
+          0 -> 0, 60 -> 300, 120 -> 240, 180 -> 180, 240 -> 120, 300 -> 60, 360 -> 0
+        """
+        if not (0 <= h_deg <= 360):
+            raise OutsideAllowableRange(f"Hue {h_deg} outside 0–360")
+        base = 0 if h_deg == 360 else h_deg  # normalize 360 to 0
+        return (360 - base) % 360

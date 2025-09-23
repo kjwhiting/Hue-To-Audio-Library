@@ -64,6 +64,5 @@ def image_to_pixel_hsv(path: str | Path) -> Tuple[int, int, List[PixelHSV]]:
     out: List[PixelHSV] = []
     for (r, g, b) in pixels:
         h_deg, s_int, v_float = rgb_to_hsv_scaled(r, g, b)
-        v_code = PixelHSV.value_to_duration_code(v_float)  # <- moved into class
-        out.append(PixelHSV(h_deg, s_int, v_code))
+        out.append(PixelHSV(h_deg, s_int, v_float))
     return w, h, out
