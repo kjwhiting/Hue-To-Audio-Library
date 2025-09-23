@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import random
 import wave
+import uuid
 from array import array
 from pathlib import Path
 from typing import Mapping, Optional
@@ -30,12 +31,12 @@ REST_CODE_TO_BEATS: Mapping[int, float] = {
     0: 1 / 64,  # 0.0625
     1: 1 / 32,  # 0.125
     2: 1 / 16,  # 0.25
-    3: 1 / 8,   # 0.5
-    4: 1 / 4,   # 1.0
-    5: 1 / 2,   # 2.0
-    6: 1,       # 4.0
 }
 NOTE_CODE_TO_BEATS: Mapping[int, float] = {
+    3: 1 / 2,   
+    4: 1 / 4,   
+    5: 1 / 8,   
+    6: 1 / 16,       
     7: 1,       # whole       = 4.0 beats
     8: 1 / 2,   # half        = 2.0 beats
     9: 1 / 4,   # quarter     = 1.0 beat
@@ -107,14 +108,69 @@ def compose_demo_bytes(
     return bytes(buf)
 
 
-def write_wav(path: str | Path, pcm_bytes: bytes, sample_rate: int) -> Path:
-    p = Path(path)
+# src/composer.py
+from pathlib import Path
+import wave
+import uuid
+
+def _unique_wav_path(dir_path: Path, prefix: str = "audio") -> Path:
+    """Return a unique WAV path under dir_path using a UUID filename."""
+    dir_path.mkdir(parents=True, exist_ok=True)
+    # UUID collisions are practically impossible, but keep a guard anyway.
+    while True:
+        cand = dir_path / f"{prefix}_{uuid.uuid4().hex}.wav"
+        if not cand.exists():
+            return cand
+
+def _avoid_overwrite(p: Path) -> Path:
+    """If p exists, append ' (n)' before suffix until unique."""
+    if not p.exists():
+        return p
+    stem, suffix = p.stem, (p.suffix or ".wav")
+    n = 1
+    while True:
+        cand = p.with_name(f"{stem} ({n}){suffix}")
+        if not cand.exists():
+            return cand
+        n += 1
+
+def write_wav(
+    path: str | Path | None,
+    pcm_bytes: bytes,
+    sample_rate: int,
+    *,
+    default_dir: str | Path = "output",
+    prefix: str = "audio",
+    ensure_unique: bool = True,
+) -> Path:
+    """
+    Write PCM 16-bit mono WAV.
+
+    Behavior:
+      - path is None                -> output/<prefix>_<uuid>.wav
+      - path points to a directory  -> <that_dir>/<prefix>_<uuid>.wav
+      - path is a file:
+          * if ensure_unique=True and it exists, write to 'name (1).wav', etc.
+          * else overwrite
+    """
+    if path is None:
+        p = _unique_wav_path(Path(default_dir), prefix=prefix)
+    else:
+        p = Path(path)
+        # Treat "no suffix" or existing directory as a directory target.
+        if (p.suffix == "" and not p.exists()) or (p.exists() and p.is_dir()):
+            p = _unique_wav_path(p if p.exists() else Path(p), prefix=prefix)
+        elif ensure_unique and p.exists():
+            p = _avoid_overwrite(p)
+
+    p.parent.mkdir(parents=True, exist_ok=True)
     with wave.open(str(p), "wb") as w:
         w.setnchannels(1)
-        w.setsampwidth(2)
+        w.setsampwidth(2)      # 16-bit
         w.setframerate(sample_rate)
         w.writeframes(pcm_bytes)
     return p
+
 
 
 def sample(

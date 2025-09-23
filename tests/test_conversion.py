@@ -9,6 +9,8 @@ except Exception as e:
     raise ImportError("Pillow is required for these tests. pip install pillow") from e
 
 from src.conversion import read_image_rgb, rgb_to_hsv_scaled, image_to_pixel_hsv
+from src.composer import write_wav
+from src.synth import SAMPLE_RATE_DEFAULT
 
 
 def _save_png(path: Path, pixels, w: int, h: int):
@@ -138,3 +140,9 @@ def test_constructor_inverts_hue_on_store():
     assert 238 <= px.h_deg <= 242
     assert px.s == 5000
     assert 4 <= px.v <= 11  # v depends on binning; 0.75 -> ceil(4.5)=5 typically
+
+def test_write_wav_creates_missing_directories(tmp_path):
+    nested = tmp_path / "deep/nested/dir/out.wav"
+    out = write_wav(nested, b"", SAMPLE_RATE_DEFAULT)
+    assert out.exists()
+    assert out.parent.is_dir()

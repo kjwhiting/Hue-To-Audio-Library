@@ -29,14 +29,14 @@ def test_code_to_seconds_mapping_boundaries():
     assert code_to_seconds(13, 120) == pytest.approx(0.03125)  # 1/64: 0.0625 beats @120 = 0.03125s
 
     # Rests mirror, e.g., code 6 = whole rest
-    assert code_to_seconds(6, 120) == pytest.approx(2.0)
+    assert code_to_seconds(2, 120) == pytest.approx(.125)
     assert code_to_seconds(0, 120) == pytest.approx(0.03125)
 
 
 def test_render_code_bytes_rest_is_silence(tmp_path: Path):
-    dur_s = code_to_seconds(6, DEFAULT_BPM)  # whole rest at default BPM
+    dur_s = code_to_seconds(2, DEFAULT_BPM)  # whole rest at default BPM
     frames = int(round(dur_s * SAMPLE_RATE_DEFAULT))
-    buf = render_code_bytes(6, "sine", DEFAULT_BPM, SAMPLE_RATE_DEFAULT, loudness=0.8)
+    buf = render_code_bytes(2, "sine", DEFAULT_BPM, SAMPLE_RATE_DEFAULT, loudness=0.8)
     assert len(buf) == frames * 2  # 16-bit mono
     samples = _as_int16(buf)
     assert all(v == 0 for v in samples)
