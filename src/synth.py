@@ -8,11 +8,40 @@ Public API:
                     loudness: float,
                     voice: str = "sine",
                     sample_rate: int = 44100) -> bytes
+    synthesize_bass_bed(duration_s: float,
+                        loudness: float = 0.25,
+                        root_hz: float = 55.0,
+                        sample_rate: int = 44100) -> bytes
+
+    # NEW (optional, smoother):
+    synthesize_note_env(freq_hz: float,
+                        duration_s: float,
+                        loudness: float,
+                        voice: str = "sine",
+                        sample_rate: int = 44100,
+                        attack_ms: int = 8,
+                        decay_ms: int = 60,
+                        sustain: float = 0.85,
+                        release_ms: int = 160,
+                        extend_tail: bool = True) -> bytes
+
+    # NEW (chords):
+    synthesize_chord(freqs_hz: Iterable[float],
+                     duration_s: float,
+                     loudness: float,
+                     voice: str = "sine",
+                     sample_rate: int = 44100,
+                     attack_ms: int = 8,
+                     decay_ms: int = 60,
+                     sustain: float = 0.85,
+                     release_ms: int = 160,
+                     extend_tail: bool = True) -> bytes
 
 Voices:
     - "sine":     Pure sine with gentle fades. Clean and clear.
     - "triangle": Warm, odd-harmonic additive triangle (band-limited).
     - "bell":     Pleasant inharmonic bell with exponential partial decays.
+    - "bass":     Deep, warm sub/sine blend (steady; no LFO).
 
 Output:
     - PCM 16-bit mono (little-endian) as bytes. Composer can concatenate these.
@@ -22,20 +51,20 @@ from __future__ import annotations
 
 import math
 from array import array
-from typing import Iterable
+from typing import Iterable, List
 
 from src.exceptions import OutsideAllowableRange
 
 # ===== CONFIG / CONSTANTS (EDIT HERE) =====
 SAMPLE_RATE_DEFAULT = 44_100
 HEADROOM = 0.85            # global safety margin (do not push to 1.0)
-FADE_MS = 8                # fade-in/out (ms) to avoid clicks
+FADE_MS = 8                # fade-in/out (ms) to avoid clicks (legacy API)
 
-# Musical range guard (C2..C6)
-C2_HZ = 60          # ~ C2
+# Musical range guard (C1..C6) — widened to allow deep bass pads
+C1_HZ = 33          # ~ C1 (rounded 32.7 -> 33)
 C6_HZ = 1050        # ~ C6
 
-ALLOWED_VOICES = {"sine", "triangle", "bell"}
+ALLOWED_VOICES = {"sine", "triangle", "bell", "bass"}
 
 
 # ===== UTILITIES =====
@@ -107,7 +136,7 @@ def _bandlimited_triangle_sample_table(freq_hz: float, sample_rate: int) -> list
 def _bell_partials(freq_hz: float, sample_rate: int) -> list[tuple[float, float, float]]:
     """
     Inharmonic bell partials: (ratio, amp, tau_seconds)
-      Ratios chosen to sound pleasant while staying well below Nyquist across C2..C6.
+      Ratios chosen to sound pleasant while staying well below Nyquist across C1..C6.
     """
     nyquist = sample_rate / 2.0
     partials = [
@@ -123,37 +152,92 @@ def _bell_partials(freq_hz: float, sample_rate: int) -> list[tuple[float, float,
     return [(r, a / total, tau) for (r, a, tau) in usable]
 
 
+def _soft_clip(x: float, drive: float = 1.2) -> float:
+    """Mild, musical soft clip using tanh. drive≈1.0–1.5 recommended."""
+    return math.tanh(x * drive)
+
+
+# ===== NEW: ADSR envelope =====
+def _adsr_envelope(
+    n_frames: int,
+    sample_rate: int,
+    attack_ms: int,
+    decay_ms: int,
+    sustain: float,
+    release_ms: int,
+    extend_tail: bool,
+) -> list[float]:
+    """
+    Build an ADSR envelope. If extend_tail=True, we append release frames,
+    returning a list longer than n_frames so the tail fully decays (no cut-off).
+    """
+    sustain = _clamp01(sustain)
+    a = max(0, int(round(sample_rate * (attack_ms / 1000.0))))
+    d = max(0, int(round(sample_rate * (decay_ms / 1000.0))))
+    r = max(0, int(round(sample_rate * (release_ms / 1000.0))))
+
+    body_frames = n_frames
+    total_frames = body_frames + (r if extend_tail else 0)
+    env = [0.0] * total_frames
+
+    # Attack (0 -> 1)
+    for i in range(min(a, total_frames)):
+        env[i] = i / max(1, a)
+
+    # Decay (1 -> sustain)
+    start = a
+    end = min(a + d, total_frames)
+    for i in range(start, end):
+        t = (i - start) / max(1, (end - start))
+        env[i] = 1.0 + (sustain - 1.0) * t
+
+    # Sustain (flat)
+    for i in range(end, min(body_frames, total_frames)):
+        env[i] = sustain
+
+    # Release (sustain -> 0)
+    rel_start = body_frames
+    rel_end = min(body_frames + r, total_frames)
+    if rel_start < rel_end:
+        for i in range(rel_start, rel_end):
+            t = (i - rel_start) / max(1, (rel_end - rel_start))
+            env[i] = sustain * (1.0 - t)
+
+    # Ensure very start/end are not exactly zero to avoid all-zero chunks
+    if total_frames:
+        env[0] *= 1.0
+        env[-1] *= 1.0
+    return env
+
+
 # ===== SYNTH CORE =====
 def synthesize_note(
     freq_hz: float,
     duration_s: float,
     loudness: float,
-    voice: str = "sine",
     sample_rate: int = SAMPLE_RATE_DEFAULT,
 ) -> bytes:
     """
     Generate a single note buffer (PCM 16-bit mono) for the given voice.
 
     Args:
-        freq_hz:    Frequency in Hz. Must be within C2..C6 for safety.
+        freq_hz:    Frequency in Hz. Must be within C1..C6 for safety.
         duration_s: Note length in seconds (>0).
         loudness:   Scalar 0..1. Overall output is scaled by HEADROOM * loudness.
-        voice:      "sine" | "triangle" | "bell"
+        voice:      "sine" | "triangle" | "bell" | "bass"
         sample_rate:Samples per second (default 44100).
 
     Returns:
         bytes: PCM int16 mono samples.
 
     Raises:
-        OutsideAllowableRange: if freq_hz is outside C2..C6.
+        OutsideAllowableRange: if freq_hz is outside C1..C6.
         ValueError: for bad args (duration <= 0, unknown voice).
     """
-    if not (C2_HZ <= freq_hz <= C6_HZ):
-        raise OutsideAllowableRange(f"Frequency {freq_hz:.2f} Hz outside C2..C6 range")
+    if not (C1_HZ <= freq_hz <= C6_HZ):
+        raise OutsideAllowableRange(f"Frequency {freq_hz:.2f} Hz outside C1..C6 range")
     if duration_s <= 0:
         return b""
-    if voice not in ALLOWED_VOICES:
-        raise ValueError(f"Unknown voice '{voice}'. Allowed: {sorted(ALLOWED_VOICES)}")
 
     n = _frames_for_duration(duration_s, sample_rate)
     if n == 0:
@@ -165,36 +249,231 @@ def synthesize_note(
     # Render per voice
     buf = [0.0] * n
 
-    if voice == "sine":
+   
+    sub_ok = (freq_hz * 0.5) >= 20.0
+    for i in range(n):
+        phase = two_pi_f_over_sr * i
+        s_fund = math.sin(phase)
+        s_sub = math.sin(phase * 0.5) if sub_ok else 0.0
+        s_2nd = math.sin(phase * 2.0)
+        s = 0.82 * s_fund + 0.30 * s_sub + 0.06 * s_2nd
+        s = _soft_clip(s, drive=1.10)
+        buf[i] = s * loud
+
+
+    for i in range(n):
+        buf[i] = math.sin(two_pi_f_over_sr * i) * loud
+
+    terms = _bandlimited_triangle_sample_table(freq_hz, sample_rate)
+    if not terms:
+        # fallback to sine if too high
         for i in range(n):
             buf[i] = math.sin(two_pi_f_over_sr * i) * loud
-
-    elif voice == "triangle":
-        terms = _bandlimited_triangle_sample_table(freq_hz, sample_rate)
-        if not terms:
-            # fallback to sine if too high
-            for i in range(n):
-                buf[i] = math.sin(two_pi_f_over_sr * i) * loud
-        else:
-            for i in range(n):
-                s = 0.0
-                phase = two_pi_f_over_sr * i
-                for k, w in terms:
-                    s += w * math.sin(phase * k)
-                buf[i] = s * loud
-
-    elif voice == "bell":
-        parts = _bell_partials(freq_hz, sample_rate)
+    else:
         for i in range(n):
-            t = i / sample_rate
-            phase = two_pi_f_over_sr * i
             s = 0.0
-            for ratio, amp, tau in parts:
-                s += amp * math.sin(phase * ratio) * math.exp(-t / tau)
+            phase = two_pi_f_over_sr * i
+            for k, w in terms:
+                s += w * math.sin(phase * k)
             buf[i] = s * loud
 
-    # Clickless fades (attack/release)
+    parts = _bell_partials(freq_hz, sample_rate)
+    for i in range(n):
+        t = i / sample_rate
+        phase = two_pi_f_over_sr * i
+        s = 0.0
+        for ratio, amp, tau in parts:
+            s += amp * math.sin(phase * ratio) * math.exp(-t / tau)
+        buf[i] = s * loud
+
+
+
+    # Clickless fades (attack/release for legacy API)
     _apply_fades(buf, sample_rate, FADE_MS)
 
     # Convert to PCM16
     return _pcm16_from_float(buf)
+
+
+# ===== NEW: ADSR variant (smooth, natural tails) =====
+def synthesize_note_env(
+    freq_hz: float,
+    duration_s: float,
+    loudness: float,
+    sample_rate: int = SAMPLE_RATE_DEFAULT,
+    *,
+    attack_ms: int = 8,
+    decay_ms: int = 60,
+    sustain: float = 0.85,
+    release_ms: int = 160,
+    extend_tail: bool = True,
+) -> bytes:
+    """
+    Like synthesize_note, but with an ADSR envelope. With extend_tail=True,
+    the buffer includes a real release tail so the note ends naturally.
+
+    Duration:
+        - If extend_tail=False: output length ~= duration_s
+        - If extend_tail=True:  output ~= duration_s + release_ms
+    """
+    if not (C1_HZ <= freq_hz <= C6_HZ):
+        raise OutsideAllowableRange(f"Frequency {freq_hz:.2f} Hz outside C1..C6 range")
+    if duration_s <= 0:
+        return b""
+
+    n_body = _frames_for_duration(duration_s, sample_rate)
+    if n_body == 0:
+        return b""
+
+    # Build envelope (may extend tail)
+    env = _adsr_envelope(n_body, sample_rate, attack_ms, decay_ms, sustain, release_ms, extend_tail)
+    n_total = len(env)
+
+    loud = _clamp01(loudness) * HEADROOM
+    two_pi_f_over_sr = 2.0 * math.pi * freq_hz / sample_rate
+
+    buf = [0.0] * n_total
+
+    for i in range(n_total):
+        buf[i] = math.sin(two_pi_f_over_sr * i) * loud * env[i]
+
+    terms = _bandlimited_triangle_sample_table(freq_hz, sample_rate)
+    if not terms:
+        for i in range(n_total):
+            buf[i] = math.sin(two_pi_f_over_sr * i) * loud * env[i]
+    else:
+        for i in range(n_total):
+            s = 0.0
+            phase = two_pi_f_over_sr * i
+            for k, w in terms:
+                s += w * math.sin(phase * k)
+            buf[i] = s * loud * env[i]
+
+    parts = _bell_partials(freq_hz, sample_rate)
+    for i in range(n_total):
+        t = i / sample_rate
+        phase = two_pi_f_over_sr * i
+        s = 0.0
+        for ratio, amp, tau in parts:
+            s += amp * math.sin(phase * ratio) * math.exp(-t / tau)
+        buf[i] = s * loud * env[i]
+
+    sub_ok = (freq_hz * 0.5) >= 20.0
+    for i in range(n_total):
+        phase = two_pi_f_over_sr * i
+        s_fund = math.sin(phase)
+        s_sub = math.sin(phase * 0.5) if sub_ok else 0.0
+        s_2nd = math.sin(phase * 2.0)
+        s = 0.82 * s_fund + 0.30 * s_sub + 0.06 * s_2nd
+        s = _soft_clip(s, drive=1.08)
+        buf[i] = s * loud * env[i]
+
+    # No extra end fades needed; ADSR handles attack/release.
+    return _pcm16_from_float(buf)
+
+
+def make_render_all_voices_perfect_fifth(sample_rate: int, f_root: float):
+    """
+    Precompute data for root and perfect fifth (3/2) and return a per-frame
+    renderer that combines ALL voices (sine, triangle, bell, bass) into one sample.
+
+    Returns:
+        render(i: int) -> float   # dry oscillator sample in roughly [-1, 1]
+    """
+    f5 = f_root * 1.5
+    two_pi_over_sr_root = 2.0 * math.pi * f_root / sample_rate
+    two_pi_over_sr_f5   = 2.0 * math.pi * f5     / sample_rate
+
+    # Precompute triangle weight tables (band-limited) for root and fifth
+    tri_terms_root = _bandlimited_triangle_sample_table(f_root, sample_rate)
+    tri_terms_f5   = _bandlimited_triangle_sample_table(f5, sample_rate)
+
+    # Precompute bell partials for root and fifth
+    bell_parts_root = _bell_partials(f_root, sample_rate)
+    bell_parts_f5   = _bell_partials(f5, sample_rate)
+
+    # Bass sub-octave validity (avoid sub < 20 Hz)
+    bass_sub_root_ok = (f_root * 0.5) >= 20.0
+    bass_sub_f5_ok   = (f5 * 0.5)   >= 20.0
+
+    def render(i: int) -> float:
+        # Phases for root and fifth
+        phase_r = two_pi_over_sr_root * i
+        phase_5 = two_pi_over_sr_f5   * i
+        t = i / sample_rate
+
+        # ---- SINE (root + fifth) ----
+        sine_r = math.sin(phase_r)
+        sine_5 = math.sin(phase_5)
+        v_sine = 0.5 * (sine_r + sine_5)  # average root & fifth
+
+        # ---- TRIANGLE (additive, band-limited) ----
+        if tri_terms_root:
+            tri_r = sum(w * math.sin(phase_r * k) for k, w in tri_terms_root)
+        else:
+            tri_r = math.sin(phase_r)
+        if tri_terms_f5:
+            tri_5 = sum(w * math.sin(phase_5 * k) for k, w in tri_terms_f5)
+        else:
+            tri_5 = math.sin(phase_5)
+        v_tri = 0.5 * (tri_r + tri_5)
+
+        # ---- BELL (inharmonic partials, exponential decays) ----
+        bell_r = 0.0
+        for ratio, amp, tau in bell_parts_root:
+            bell_r += amp * math.sin(phase_r * ratio) * math.exp(-t / tau)
+        bell_5 = 0.0
+        for ratio, amp, tau in bell_parts_f5:
+            bell_5 += amp * math.sin(phase_5 * ratio) * math.exp(-t / tau)
+        v_bell = 0.5 * (bell_r + bell_5)
+
+        # ---- BASS (fundamental + optional sub + tiny 2nd) ----
+        # Root
+        b_r_fund = math.sin(phase_r)
+        b_r_sub  = math.sin(phase_r * 0.5) if bass_sub_root_ok else 0.0
+        b_r_2nd  = math.sin(phase_r * 2.0)
+        bass_r   = 0.82 * b_r_fund + 0.30 * b_r_sub + 0.06 * b_r_2nd
+        # Fifth
+        b_5_fund = math.sin(phase_5)
+        b_5_sub  = math.sin(phase_5 * 0.5) if bass_sub_f5_ok else 0.0
+        b_5_2nd  = math.sin(phase_5 * 2.0)
+        bass_5   = 0.82 * b_5_fund + 0.30 * b_5_sub + 0.06 * b_5_2nd
+        v_bass = 0.5 * (bass_r + bass_5)
+        v_bass = _soft_clip(v_bass, drive=1.06)
+
+        # ---- Mix all voices (average) and polish ----
+        v = (v_sine + v_tri + v_bell + v_bass) * 0.25  # equal-voice average
+        return _soft_clip(v, drive=1.04)
+
+    return render
+
+
+# ===== CONVENIENCE: Bass bed helper (unchanged) =====
+def synthesize_bass_bed(
+    duration_s: float,
+    loudness: float = 0.25,
+    root_hz: float = 55.0,  # A1 ≈ 55 Hz; sits well under most content
+    sample_rate: int = SAMPLE_RATE_DEFAULT,
+) -> bytes:
+    """
+    Generate a gentle deep-bass bed (mono) suitable for background underlays.
+
+    Args:
+        duration_s: Length in seconds.
+        loudness:   0..1 scalar; defaults to subtle (0.25).
+        root_hz:    Fundamental frequency in Hz (default A1 ≈ 55 Hz).
+        sample_rate:Samples per second.
+
+    Returns:
+        bytes: PCM 16-bit mono.
+
+    Notes:
+        - Uses the "bass" voice.
+        - Keep loudness low (0.15–0.35) to avoid masking primary content.
+    """
+    return synthesize_note(
+        freq_hz=root_hz,
+        duration_s=duration_s,
+        loudness=loudness,
+        sample_rate=sample_rate,
+    )

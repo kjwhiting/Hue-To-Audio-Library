@@ -19,7 +19,6 @@ from src.synth import SAMPLE_RATE_DEFAULT, ALLOWED_VOICES
 # ===== CONFIG / CONSTANTS (EDIT HERE) =========================================
 DEFAULT_BPM = 120
 DEFAULT_SAMPLE_RATE = SAMPLE_RATE_DEFAULT
-DEFAULT_VOICE_STRATEGY: Literal["sine", "triangle", "bell", "cycle", "hue"] = "hue"
 PIXEL_STRIDE = 1  # manual fixed stride when auto-stride is not used
 LOUDNESS_MIN = 0.10
 LOUDNESS_MAX = 1.00
@@ -68,24 +67,6 @@ def saturation_to_loudness(s_int: int) -> float:
     x = max(0.0, min(1.0, s_int / 10_000.0))
     x = max(LOUDNESS_MIN, min(LOUDNESS_MAX, x))
     return x
-
-
-def pick_voice(
-    h_deg: int,
-    index: int,
-    strategy: Literal["sine", "triangle", "bell", "cycle", "hue"],
-) -> str:
-    if strategy in ALLOWED_VOICES:
-        return strategy
-    if strategy == "cycle":
-        voices = sorted(ALLOWED_VOICES)
-        return voices[index % len(voices)]
-    # strategy == "hue"
-    if h_deg < 120:
-        return "sine"
-    if h_deg < 240:
-        return "triangle"
-    return "bell"
 
 
 # ===== AUTO-STRIDE HELPERS ====================================================
@@ -139,11 +120,10 @@ def pixels_to_pcm(
     pixels: Iterable[PixelHSV],
     bpm: int,
     sample_rate: int,
-    voice_strategy: Literal["sine", "triangle", "bell", "cycle", "hue"],
     stride: int = 1,
     *,
     progress_cb: Optional[Callable[[int, int], None]] = None,
-    render_fn: Callable[[int, str, int, int, float, float], bytes] = render_code_bytes,
+    render_fn: Callable[[int, int, int, float, float], bytes] = render_code_bytes,
     max_seconds: Optional[float] = None,
 ) -> bytes:
     """
@@ -170,9 +150,8 @@ def pixels_to_pcm(
 
         freq = hue_to_freq_c2_c6(px.h_deg)
         loud = saturation_to_loudness(px.s)
-        voice = pick_voice(px.h_deg, done, strategy=voice_strategy)
 
-        out += render_fn(px.v, voice, bpm, sample_rate, loud, freq)
+        out += render_fn(px.v, bpm, sample_rate, loud, freq)
         elapsed += dur
         done += 1
 
@@ -191,7 +170,6 @@ def compose_from_image(
     bpm: int = DEFAULT_BPM,
     sample_rate: int = SAMPLE_RATE_DEFAULT,
     stride: int = PIXEL_STRIDE,
-    voice_strategy: Literal["sine", "triangle", "bell", "cycle", "hue"] = DEFAULT_VOICE_STRATEGY,
     *,
     show_progress: bool = True,
     max_seconds: Optional[float] = DEFAULT_MAX_SECONDS,
@@ -215,7 +193,6 @@ def compose_from_image(
         px,
         bpm=bpm,
         sample_rate=sample_rate,
-        voice_strategy=voice_strategy,
         stride=stride,
         progress_cb=progress_cb,
         max_seconds=max_seconds,
@@ -223,7 +200,7 @@ def compose_from_image(
     out = write_wav(out_wav, pcm, sample_rate)
     print(
         f"Wrote {out.resolve()}  (BPM={bpm}, SR={sample_rate}, stride={stride}, "
-        f"voice={voice_strategy}, max_seconds={max_seconds}, auto_stride={auto_stride})"
+        f"max_seconds={max_seconds}, auto_stride={auto_stride})"
     )
     return out
 
@@ -237,7 +214,6 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--voice-strategy",
         choices=["sine", "triangle", "bell", "cycle", "hue"],
-        default=DEFAULT_VOICE_STRATEGY,
         help="How to choose voice per pixel",
     )
     ap.add_argument("--stride", type=int, default=PIXEL_STRIDE, help="Use every Nth pixel")
@@ -269,7 +245,6 @@ def main() -> None:
         bpm=args.bpm,
         sample_rate=args.sr,
         stride=max(1, int(args.stride)),
-        voice_strategy=args.voice_strategy,
         show_progress=not args.no_progress,
         max_seconds=args.max_seconds,
         auto_stride=args.auto_stride,

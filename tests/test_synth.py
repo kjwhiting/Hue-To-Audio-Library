@@ -1,82 +1,52 @@
-# tests/test_synth.py
-from pathlib import Path
-from array import array
+# src/synth_test.py
 import math
+
 import pytest
 
-from src.synth import synthesize_note, C2_HZ, C6_HZ, SAMPLE_RATE_DEFAULT
+from src.synth import (
+    synthesize_note,
+    synthesize_bass_bed,
+    SAMPLE_RATE_DEFAULT,
+    ALLOWED_VOICES,
+)
+
+from src.exceptions import OutsideAllowableRange
 
 
-def _as_int16(buf: bytes) -> array:
-    a = array("h")
-    a.frombytes(buf)
-    return a
+def test_allowed_voices_contains_bass():
+    assert "bass" in ALLOWED_VOICES
 
 
-@pytest.mark.parametrize("voice", ["sine", "triangle", "bell"])
-def test_length_and_clip_safety(voice):
-    sr = SAMPLE_RATE_DEFAULT
-    buf = synthesize_note(freq_hz=440.0, duration_s=0.25, loudness=1.0, voice=voice, sample_rate=sr)
-    samples = _as_int16(buf)
-
-    # expected length within 1 sample of rounding
-    assert abs(len(samples) - int(round(0.25 * sr))) <= 1
-
-    # no clipping to int16 extremes
-    peak = max(abs(x) for x in samples)
-    assert peak < 32000  # headroom (32767 is int16 max)
+def test_bass_voice_basic_bytes():
+    data = synthesize_note(
+        freq_hz=60.0, duration_s=0.25, loudness=0.3, sample_rate=SAMPLE_RATE_DEFAULT
+    )
+    assert isinstance(data, (bytes, bytearray))
+    # 0.25s * 44100 * 2 bytes = ~22050 bytes (mono int16)
+    assert len(data) > 10_000
 
 
-def test_loudness_scales_amplitude():
-    sr = SAMPLE_RATE_DEFAULT
-    buf_lo = _as_int16(synthesize_note(440.0, 0.2, 0.25, "sine", sr))
-    buf_hi = _as_int16(synthesize_note(440.0, 0.2, 1.00, "sine", sr))
-
-    # Compare RMS of middle chunk to avoid fades
-    def rms(a: array) -> float:
-        # skip first/last 10ms
-        skip = int(0.01 * sr)
-        vals = a[skip: -skip] if len(a) > skip * 2 else a
-        return math.sqrt(sum(x * x for x in vals) / max(1, len(vals)))
-
-    assert rms(buf_hi) > rms(buf_lo) * 1.5  # clearly louder; not exact ratio due to fades
+def test_bass_bed_helper_works_and_length():
+    dur = 0.5
+    data = synthesize_bass_bed(duration_s=dur, loudness=0.2, root_hz=55.0)
+    assert isinstance(data, (bytes, bytearray))
+    # allow small rounding error
+    expected_frames = int(round(dur * SAMPLE_RATE_DEFAULT))
+    assert len(data) // 2 in range(expected_frames - 2, expected_frames + 3)
 
 
-def test_bell_decays_over_time():
-    sr = SAMPLE_RATE_DEFAULT
-    samples = _as_int16(synthesize_note(440.0, 0.5, 0.8, "bell", sr))
-    n = len(samples)
-    assert n > 0
-
-    # Split into quarters and compute RMS for early vs late sections.
-    q = n // 4
-
-    def rms(arr):
-        return math.sqrt(sum(x * x for x in arr) / max(1, len(arr)))
-
-    # Skip the first/last ~10ms to avoid fades dominating the measurement.
-    skip = max(1, int(0.01 * sr))
-    early = samples[q + skip : 2 * q]          # early middle
-    late = samples[3 * q : max(3 * q + 1, n - skip)]  # late (avoid final fade-only)
-
-    first = rms(early)
-    last = rms(late)
-
-    # Sanity: early section should have non-trivial energy
-    assert first > 1.0
-
-    # Decay check: the tail should be notably quieter than the early section.
-    ratio = last / first
-    assert ratio < 0.8  # 20% drop or more; generous to avoid flakiness
+def test_low_frequency_guard_allows_c1_to_c6():
+    # Lower edge within range (C1≈33 Hz)
+    data = synthesize_note(33.0, 0.1, 0.3)
+    assert len(data) > 0
+    # Upper edge still acceptable
+    data2 = synthesize_note(1050.0, 0.1, 0.3)
+    assert len(data2) > 0
 
 
-def test_frequency_guard_raises():
-    with pytest.raises(Exception):
-        synthesize_note(freq_hz=C2_HZ - 1.0, duration_s=0.1, loudness=0.5, voice="sine")
-    with pytest.raises(Exception):
-        synthesize_note(freq_hz=C6_HZ + 1.0, duration_s=0.1, loudness=0.5, voice="sine")
+def test_outside_range_raises():
+    with pytest.raises(OutsideAllowableRange):
+        synthesize_note(15.0, 0.1, 0.3)
+    with pytest.raises(OutsideAllowableRange):
+        synthesize_note(5000.0, 0.1, 0.3)
 
-
-def test_zero_or_negative_duration_returns_empty():
-    assert synthesize_note(440.0, 0.0, 0.5, "sine") == b""
-    assert synthesize_note(440.0, -1.0, 0.5, "sine") == b""

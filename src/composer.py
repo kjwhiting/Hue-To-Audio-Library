@@ -17,33 +17,32 @@ from array import array
 from pathlib import Path
 from typing import Mapping, Optional
 
-from src.synth import synthesize_note, SAMPLE_RATE_DEFAULT, ALLOWED_VOICES
+from src.synth import synthesize_note, SAMPLE_RATE_DEFAULT
 
 DEFAULT_BPM = 120
 TEST_FREQUENCY_HZ = 440.0
 VOLUME_MIN = 0.35
 VOLUME_MAX = 0.95
-NOTE_CODES = (7, 8, 9, 10, 11, 12, 13)  # notes
-REST_CODES = (0, 1, 2, 3, 4, 5, 6)      # rests (silence)
+NOTE_CODES = (7, 8, 9, 10, 11, 12, 13)  
+REST_CODES = (0, 1, 2, 3, 4, 5, 6)      
 
-# Beats relative to quarter note (quarter=1.0 beat)
 REST_CODE_TO_BEATS: Mapping[int, float] = {
-    0: 1 / 64,  # 0.0625
-    1: 1 / 32,  # 0.125
-    2: 1 / 16,  # 0.25
+    0: 1 / 4, 
+    1: 1 / 8, 
+    2: 1 / 16,  
 }
 NOTE_CODE_TO_BEATS: Mapping[int, float] = {
     3: 1 / 2,   
     4: 1 / 4,   
     5: 1 / 8,   
-    6: 1 / 16,       
-    7: 1,       # whole       = 4.0 beats
-    8: 1 / 2,   # half        = 2.0 beats
-    9: 1 / 4,   # quarter     = 1.0 beat
-    10: 1 / 8,  # eighth      = 0.5
-    11: 1 / 16, # sixteenth   = 0.25
-    12: 1 / 32, # thirtysecond= 0.125
-    13: 1 / 64, # sixtyfourth = 0.0625
+    6: 1 / 4,       
+    7: 1,       
+    8: 1 / 2,   
+    9: 1 / 4,   
+    10: 1 / 8,  
+    11: 1 / 16, 
+    12: 1 / 8, 
+    13: 1 / 16, 
 }
 
 def beats_to_seconds(beats: float, bpm: int) -> float:
@@ -66,7 +65,6 @@ def _silence_pcm(frames: int) -> bytes:
 
 def render_code_bytes(
     code: int,
-    voice: str,
     bpm: int,
     sample_rate: int,
     loudness: float,
@@ -81,7 +79,6 @@ def render_code_bytes(
             freq_hz=freq_hz,
             duration_s=dur_s,
             loudness=loudness,
-            voice=voice,
             sample_rate=sample_rate,
         )
 
@@ -99,12 +96,11 @@ def compose_demo_bytes(
         rng = random.Random()
 
     buf = bytearray()
-    for voice in sorted(ALLOWED_VOICES):
-        for note_code in NOTE_CODES:
-            rest_code = 13 - note_code  # 7->6, 8->5, ..., 13->0
-            loud = rng.uniform(VOLUME_MIN, VOLUME_MAX)
-            buf += render_code_bytes(note_code, voice, bpm, sample_rate, loud)
-            buf += render_code_bytes(rest_code, voice, bpm, sample_rate, loudness=0.0)
+    for note_code in NOTE_CODES:
+        rest_code = 13 - note_code  # 7->6, 8->5, ..., 13->0
+        loud = rng.uniform(VOLUME_MIN, VOLUME_MAX)
+        buf += render_code_bytes(note_code,  bpm, sample_rate, loud)
+        buf += render_code_bytes(rest_code,  bpm, sample_rate, loudness=0.0)
     return bytes(buf)
 
 

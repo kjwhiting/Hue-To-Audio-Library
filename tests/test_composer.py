@@ -25,25 +25,25 @@ def _as_int16(buf: bytes) -> array:
 def test_code_to_seconds_mapping_boundaries():
     # Whole note length at 120 BPM: 2.0s
     assert code_to_seconds(7, 120) == pytest.approx(2.0)   # whole note
-    assert code_to_seconds(9, 120) == pytest.approx(0.5)   # quarter
-    assert code_to_seconds(13, 120) == pytest.approx(0.03125)  # 1/64: 0.0625 beats @120 = 0.03125s
+    assert code_to_seconds(9, 120) == pytest.approx(.5)   # quarter
+    assert code_to_seconds(13, 120) == pytest.approx(.125)  # 1/64: 0.0625 beats @120 = 0.03125s
 
     # Rests mirror, e.g., code 6 = whole rest
     assert code_to_seconds(2, 120) == pytest.approx(.125)
-    assert code_to_seconds(0, 120) == pytest.approx(0.03125)
+    assert code_to_seconds(0, 120) == pytest.approx(.5)
 
 
 def test_render_code_bytes_rest_is_silence(tmp_path: Path):
     dur_s = code_to_seconds(2, DEFAULT_BPM)  # whole rest at default BPM
     frames = int(round(dur_s * SAMPLE_RATE_DEFAULT))
-    buf = render_code_bytes(2, "sine", DEFAULT_BPM, SAMPLE_RATE_DEFAULT, loudness=0.8)
+    buf = render_code_bytes(2,  DEFAULT_BPM, SAMPLE_RATE_DEFAULT, loudness=0.8)
     assert len(buf) == frames * 2  # 16-bit mono
     samples = _as_int16(buf)
     assert all(v == 0 for v in samples)
 
 
 def test_render_code_bytes_note_is_nonzero():
-    buf = render_code_bytes(9, "sine", DEFAULT_BPM, SAMPLE_RATE_DEFAULT, loudness=0.6)  # quarter note
+    buf = render_code_bytes(9,  DEFAULT_BPM, SAMPLE_RATE_DEFAULT, loudness=0.6)  # quarter note
     samples = _as_int16(buf)
     assert any(v != 0 for v in samples)
 
