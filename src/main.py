@@ -13,13 +13,12 @@ from src.composer_pixels import compose_from_image
 from src.synth.oscillators import write_wav, play_file
 
 # ===== EDIT HERE (hard-coded constants) =====
-IMAGE_PATH = "images/personal-artwork-3.jpg"     # path to your source image
-BPM = 240                             # beats per minute
+IMAGE_PATH = "images/ai-gen-7.jpg"     # path to your source image
 OUTPUT_FILENAME = "pixels_song.wav"    # output file name (saved under ./output/)
 
 def main() -> None:
-    print(f"Composing from: {IMAGE_PATH} @ {BPM} BPM")
-    samples = compose_from_image(IMAGE_PATH, bpm=BPM)
+    print(f"Composing from: {IMAGE_PATH}")
+    samples = compose_from_image(IMAGE_PATH)
     out_path = write_wav(OUTPUT_FILENAME, samples)
     play_file(out_path)
     print(f"Done. Wrote {Path(out_path)}")

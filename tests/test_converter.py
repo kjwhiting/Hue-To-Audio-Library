@@ -8,7 +8,7 @@ try:
 except Exception as e:
     raise ImportError("Pillow is required for these tests. pip install pillow") from e
 
-from src.converter import _read_image_rgb, image_to_pixel_hsv, get_factors, pixels_to_beats, hue_to_frequency_direct, hue_to_frequency_true_color
+from src.converter import _read_image_rgb, image_to_pixel_hsv, get_factors, hue_to_frequency_direct, hue_to_frequency_true_color
 
 
 def _save_png(path: Path, pixels, w: int, h: int):
@@ -63,16 +63,6 @@ def test_get_factors():
     assert get_factors(6) == [2,3,6]
     assert get_factors(12) == [2,3,4,6,12]
     assert get_factors(11) == [11]
-
-def test_pixels_to_beats_max_length():
-    bpm = 120
-    product = 2*3*5*7*11
-    pixels = [None] * product
-    factors, beats, duration = pixels_to_beats(pixels, bpm)
-    assert product == 2310
-    assert factors == [2,3,5,6]
-    assert beats == 180
-    assert duration == 1
 
 def test_hue_to_frequency_direct_red():
     pix = PixelHSV(255,0,0)

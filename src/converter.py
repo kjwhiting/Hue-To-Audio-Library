@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import random
 from pathlib import Path
 from typing import List, Tuple
 
@@ -19,20 +20,28 @@ def get_factors(n):
             factors.append(i)
     return factors
 
-def pixels_to_beats(pixels, bpm):
-    factors = get_factors(int(len(pixels)))
-    if(is_prime(factors)):
-        factors= [2,3,5,7]
-    
-    if(len(factors)<4):
-        factors.append([8,16,24, 7])
-    
-    factors = factors[:4]
-    beats = math.prod(factors)
-    
-    song_length_minutes = 1
+def get_averages(pixels):
+    saturation_total = 0
+    value_total = 0
+    for p in pixels:
+        saturation_total += p.s
+        value_total += p.v
 
-    return (factors, beats, song_length_minutes)
+    sat_avg = saturation_total/len(pixels)
+    value_avg = saturation_total/len(pixels)
+
+    return (sat_avg, value_avg)
+
+def pixels_to_beats(value_avg):
+    tracks =[random.randint(2,4)]
+    for i in range(0, int(value_avg*8)):
+        rand = random.randint(3,17)
+        while rand in tracks:
+            rand = random.randint(3,17)
+        
+        tracks.append(rand)
+
+    return tracks
 
 def hue_to_frequency_direct(pixel_hsv):
     # Playable frequency is between c2 (65 hz) and c6 (146 hz). This range was chosen and can be exteneded

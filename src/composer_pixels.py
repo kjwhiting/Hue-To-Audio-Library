@@ -4,15 +4,15 @@ Compose a song from an image's pixels.
 
 Flow:
   Read file -> PixelHSV -> hue_to_frequency_true_color -> pixels_to_beats
-  -> build N tracks from the factors -> schedule notes on a steady beat
+  -> build N tracks from the tracks -> schedule notes on a steady beat
   -> synth chain (oscillators -> filters -> envelopes -> amplifier) -> WAV/play
 
 Assumptions (kept simple on purpose):
 - Time signature = 4/4 with a steady quarter-note beat.
 - Each factor f creates a track that iterates pixels by stride f.
 - For that track, each chosen pixel plays for f beats (2 beats when f=2, etc),
-  as you described ("loop by 2 and play for 2 beats", and "do the same for other factors").
-- Lower factors => drum-like envelopes; higher factors => piano/pluck envelopes.
+  as you described ("loop by 2 and play for 2 beats", and "do the same for other tracks").
+- Lower tracks => drum-like envelopes; higher tracks => piano/pluck envelopes.
 - Frequencies come from hue_to_frequency_true_color(PixelHSV).
 
 Requires:
@@ -24,7 +24,7 @@ from __future__ import annotations
 from typing import List, Callable, Optional
 import sys
 import math
-from src.converter import image_to_pixel_hsv, pixels_to_beats, hue_to_frequency_true_color
+from src.converter import image_to_pixel_hsv, pixels_to_beats, hue_to_frequency_true_color, get_averages
 from src.pixel_hsv import PixelHSV
 
 
@@ -100,25 +100,28 @@ def beat_seconds(bpm: int) -> float:
 # ---------- main composition from pixels ----------
 def compose_from_image(
     image_path: str,
-    bpm: int = 100,
     base_osc_sets: Optional[List[List[str]]] = None,
 ) -> Samples:
     """
     Compose according to pixels and factor tracks.
 
-    - Determines factors, total beats, and song_length_minutes via pixels_to_beats.
+    - Determines tracks, total beats, and song_length_minutes via pixels_to_beats.
     - Each factor f makes a track: iterate pixels by stride f; each selected pixel -> note of f beats.
-    - Lower factors get drum-ish treatment; higher factors get piano/pluck-ish treatment.
+    - Lower tracks get drum-ish treatment; higher tracks get piano/pluck-ish treatment.
     - Returns a single PCM16 sample array (mono).
     """
     # 1) Load & convert image to PixelHSV list
     w, h, pixels = image_to_pixel_hsv(image_path)
+    saturation_average, value_average = get_averages(pixels)
+    bpm = int(350 * value_average) # slower if non vibrant color
 
-    # 2) Determine factors / beats / song length (minutes)
-    factors, beats, song_length_minutes = pixels_to_beats(pixels, bpm)
-    total_seconds = song_length_minutes * 60.0
+
+    # 2) Determine tracks / beats / song length (minutes)
+    tracks = pixels_to_beats(saturation_average)
+    total_seconds = 60
     total_samples = seconds_to_samples(total_seconds)
     master: Samples = [0] * total_samples
+    print(bpm, saturation_average, value_average, len(pixels), tracks)
 
     beat_sec = beat_seconds(bpm)
 
@@ -132,14 +135,14 @@ def compose_from_image(
             ["sine", "square"], # hybrid
         ]
 
-    # 4) Build tracks from factors
-    # Sort ascending; reserve smaller factors for drum-like sounds.
-    factors_sorted = sorted(factors)
+    # 4) Build tracks from tracks
+    # Sort ascending; reserve smaller tracks for drum-like sounds.
+    tracks_sorted = sorted(tracks)
 
     # Split “small” vs “large” around median
-    mid = max(1, len(factors_sorted) // 2)
-    small_factors = factors_sorted[:mid]
-    large_factors = factors_sorted[mid:]
+    mid = max(1, len(tracks_sorted) // 2)
+    small_tracks = tracks_sorted[:mid]
+    large_tracks = tracks_sorted[mid:]
 
     # Helper: pick treatment by factor group
     def drum_chain() -> tuple[list[str], list[Callable[[Samples], Samples]], Callable[[Samples], Samples], Callable[[Samples], Samples]]:
@@ -165,11 +168,11 @@ def compose_from_image(
 
     # 5) For each factor track, walk the pixels with stride=f and place notes of f beats
     # Frequency comes from hue_to_frequency_true_color(pixel)
-    for idx, f in enumerate(factors_sorted):
-        is_drumy = f in small_factors
+    for idx, f in enumerate(tracks_sorted):
+        is_drumy = f in small_tracks
         oscs, filts, fenv, aenv = (drum_chain() if is_drumy else piano_or_pluck_chain(idx))
 
-        note_beats = f  # "play for 2 beats when stride 2; same for other factors"
+        note_beats = f  # "play for 2 beats when stride 2; same for other tracks"
         note_sec = note_beats * beat_sec
 
         # stride through pixels
@@ -186,7 +189,7 @@ def compose_from_image(
                 gain=0.7,
             )
             # schedule on grid: each note occupies f beats; advance a per-track cursor
-            # Track start positions interleave across factors by aligning them to the same beat grid.
+            # Track start positions interleave across tracks by aligning them to the same beat grid.
             # We map pixel index -> beat start = (p_i // f) * (f beats)
             beat_start_index = (p_i // f) * note_beats
             start_sample = seconds_to_samples(beat_start_index * beat_sec)
