@@ -1,4 +1,3 @@
-# src/synth_test.py
 import math
 
 import pytest
@@ -10,7 +9,6 @@ from src.synth import (
     ALLOWED_VOICES,
 )
 
-from src.exceptions import OutsideAllowableRange
 
 
 def test_allowed_voices_contains_bass():
@@ -43,10 +41,4 @@ def test_low_frequency_guard_allows_c1_to_c6():
     data2 = synthesize_note(1050.0, 0.1, 0.3)
     assert len(data2) > 0
 
-
-def test_outside_range_raises():
-    with pytest.raises(OutsideAllowableRange):
-        synthesize_note(15.0, 0.1, 0.3)
-    with pytest.raises(OutsideAllowableRange):
-        synthesize_note(5000.0, 0.1, 0.3)
 

@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from typing import Iterable, Literal, Callable, Optional, Tuple, List
 
-from src.conversion import image_to_pixel_hsv
+from converter import image_to_pixel_hsv
 from src.pixel_hsv import PixelHSV
 from src.composer import (
     compose_demo_bytes,

@@ -1,61 +1,9 @@
-# src/synth.py
-"""
-Simple, beautiful note synthesis (stdlib-only).
-
-Public API:
-    synthesize_note(freq_hz: float,
-                    duration_s: float,
-                    loudness: float,
-                    voice: str = "sine",
-                    sample_rate: int = 44100) -> bytes
-    synthesize_bass_bed(duration_s: float,
-                        loudness: float = 0.25,
-                        root_hz: float = 55.0,
-                        sample_rate: int = 44100) -> bytes
-
-    # NEW (optional, smoother):
-    synthesize_note_env(freq_hz: float,
-                        duration_s: float,
-                        loudness: float,
-                        voice: str = "sine",
-                        sample_rate: int = 44100,
-                        attack_ms: int = 8,
-                        decay_ms: int = 60,
-                        sustain: float = 0.85,
-                        release_ms: int = 160,
-                        extend_tail: bool = True) -> bytes
-
-    # NEW (chords):
-    synthesize_chord(freqs_hz: Iterable[float],
-                     duration_s: float,
-                     loudness: float,
-                     voice: str = "sine",
-                     sample_rate: int = 44100,
-                     attack_ms: int = 8,
-                     decay_ms: int = 60,
-                     sustain: float = 0.85,
-                     release_ms: int = 160,
-                     extend_tail: bool = True) -> bytes
-
-Voices:
-    - "sine":     Pure sine with gentle fades. Clean and clear.
-    - "triangle": Warm, odd-harmonic additive triangle (band-limited).
-    - "bell":     Pleasant inharmonic bell with exponential partial decays.
-    - "bass":     Deep, warm sub/sine blend (steady; no LFO).
-
-Output:
-    - PCM 16-bit mono (little-endian) as bytes. Composer can concatenate these.
-"""
-
 from __future__ import annotations
 
 import math
 from array import array
 from typing import Iterable, List
 
-from src.exceptions import OutsideAllowableRange
-
-# ===== CONFIG / CONSTANTS (EDIT HERE) =====
 SAMPLE_RATE_DEFAULT = 44_100
 HEADROOM = 0.85            # global safety margin (do not push to 1.0)
 FADE_MS = 8                # fade-in/out (ms) to avoid clicks (legacy API)
@@ -217,25 +165,6 @@ def synthesize_note(
     loudness: float,
     sample_rate: int = SAMPLE_RATE_DEFAULT,
 ) -> bytes:
-    """
-    Generate a single note buffer (PCM 16-bit mono) for the given voice.
-
-    Args:
-        freq_hz:    Frequency in Hz. Must be within C1..C6 for safety.
-        duration_s: Note length in seconds (>0).
-        loudness:   Scalar 0..1. Overall output is scaled by HEADROOM * loudness.
-        voice:      "sine" | "triangle" | "bell" | "bass"
-        sample_rate:Samples per second (default 44100).
-
-    Returns:
-        bytes: PCM int16 mono samples.
-
-    Raises:
-        OutsideAllowableRange: if freq_hz is outside C1..C6.
-        ValueError: for bad args (duration <= 0, unknown voice).
-    """
-    if not (C1_HZ <= freq_hz <= C6_HZ):
-        raise OutsideAllowableRange(f"Frequency {freq_hz:.2f} Hz outside C1..C6 range")
     if duration_s <= 0:
         return b""
 
@@ -308,16 +237,6 @@ def synthesize_note_env(
     release_ms: int = 160,
     extend_tail: bool = True,
 ) -> bytes:
-    """
-    Like synthesize_note, but with an ADSR envelope. With extend_tail=True,
-    the buffer includes a real release tail so the note ends naturally.
-
-    Duration:
-        - If extend_tail=False: output length ~= duration_s
-        - If extend_tail=True:  output ~= duration_s + release_ms
-    """
-    if not (C1_HZ <= freq_hz <= C6_HZ):
-        raise OutsideAllowableRange(f"Frequency {freq_hz:.2f} Hz outside C1..C6 range")
     if duration_s <= 0:
         return b""
 

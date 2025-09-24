@@ -4,6 +4,7 @@ from __future__ import annotations
 import colorsys
 from pathlib import Path
 from typing import Dict, List, Tuple
+from src.pixel_hsv import PixelHSV
 
 
 def _require_pillow():
@@ -32,12 +33,6 @@ def _save_jpeg(path: Path, pixels: List[Tuple[int, int, int]], w: int, h: int) -
 
 
 def _values_v_for_code(code: int) -> float:
-    """
-    Pick a representative HSV 'V' for each value/rest code 0..13,
-    matching your PixelHSV.value_to_code bins (threshold at 0.25):
-      0..6  -> rests (0..0.25], we choose bin midpoints; code 0 -> 0.0
-      7..13 -> notes (0.25..1], choose bin midpoints; code 13 -> 1.0
-    """
     if code < 0 or code > 13:
         raise ValueError("code must be in 0..13")
 
@@ -76,7 +71,7 @@ def create_test_jpgs(output_dir: str | Path = "test_images") -> Dict[str, Path]:
     hue_pixels: List[Tuple[int, int, int]] = []
     for deg in range(0, 361):
         h = (deg % 360) / 360.0  # 360 maps to 0
-        hue_pixels.append(_hsv_to_rgb_bytes(h, 1.0, 1.0))
+        hue_pixels.append( _hsv_to_rgb_bytes(h, 1.0, 1.0))
     hues_path = _save_jpeg(outdir / "hues.jpg", hue_pixels, w=361, h=1)
 
     # ---- 2) Values: codes 0..13 at hue=0, sat=1 ----
