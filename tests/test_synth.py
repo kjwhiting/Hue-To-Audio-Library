@@ -6,13 +6,7 @@ from src.synth import (
     synthesize_note,
     synthesize_bass_bed,
     SAMPLE_RATE_DEFAULT,
-    ALLOWED_VOICES,
 )
-
-
-
-def test_allowed_voices_contains_bass():
-    assert "bass" in ALLOWED_VOICES
 
 
 def test_bass_voice_basic_bytes():

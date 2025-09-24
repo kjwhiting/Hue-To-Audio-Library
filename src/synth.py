@@ -1,26 +1,24 @@
-from __future__ import annotations
-
 import math
 from array import array
-from typing import Iterable, List
+from typing import Iterable
+
 
 SAMPLE_RATE_DEFAULT = 44_100
-HEADROOM = 0.85            # global safety margin (do not push to 1.0)
-FADE_MS = 8                # fade-in/out (ms) to avoid clicks (legacy API)
+# global safety margin (do not push to 1.0)
+HEADROOM = 0.85            
+FADE_MS = 8
 
-# Musical range guard (C1..C6) — widened to allow deep bass pads
-C1_HZ = 33          # ~ C1 (rounded 32.7 -> 33)
-C6_HZ = 1050        # ~ C6
-
-ALLOWED_VOICES = {"sine", "triangle", "bell", "bass"}
+# Musical range guard (C1..C6)
+C1_HZ = 33
+C6_HZ = 1050
 
 
 # ===== UTILITIES =====
-def _clamp01(x: float) -> float:
+def _clamp01(x):
     return 0.0 if x < 0.0 else 1.0 if x > 1.0 else x
 
 
-def _frames_for_duration(duration_s: float, sample_rate: int) -> int:
+def _frames_for_duration(duration_s, sample_rate):
     if duration_s <= 0:
         return 0
     return max(0, int(round(duration_s * sample_rate)))
@@ -128,22 +126,18 @@ def _adsr_envelope(
     total_frames = body_frames + (r if extend_tail else 0)
     env = [0.0] * total_frames
 
-    # Attack (0 -> 1)
     for i in range(min(a, total_frames)):
         env[i] = i / max(1, a)
 
-    # Decay (1 -> sustain)
     start = a
     end = min(a + d, total_frames)
     for i in range(start, end):
         t = (i - start) / max(1, (end - start))
         env[i] = 1.0 + (sustain - 1.0) * t
 
-    # Sustain (flat)
     for i in range(end, min(body_frames, total_frames)):
         env[i] = sustain
 
-    # Release (sustain -> 0)
     rel_start = body_frames
     rel_end = min(body_frames + r, total_frames)
     if rel_start < rel_end:
@@ -151,7 +145,6 @@ def _adsr_envelope(
             t = (i - rel_start) / max(1, (rel_end - rel_start))
             env[i] = sustain * (1.0 - t)
 
-    # Ensure very start/end are not exactly zero to avoid all-zero chunks
     if total_frames:
         env[0] *= 1.0
         env[-1] *= 1.0
@@ -195,7 +188,6 @@ def synthesize_note(
 
     terms = _bandlimited_triangle_sample_table(freq_hz, sample_rate)
     if not terms:
-        # fallback to sine if too high
         for i in range(n):
             buf[i] = math.sin(two_pi_f_over_sr * i) * loud
     else:
@@ -216,11 +208,8 @@ def synthesize_note(
         buf[i] = s * loud
 
 
-
-    # Clickless fades (attack/release for legacy API)
     _apply_fades(buf, sample_rate, FADE_MS)
 
-    # Convert to PCM16
     return _pcm16_from_float(buf)
 
 
@@ -244,7 +233,6 @@ def synthesize_note_env(
     if n_body == 0:
         return b""
 
-    # Build envelope (may extend tail)
     env = _adsr_envelope(n_body, sample_rate, attack_ms, decay_ms, sustain, release_ms, extend_tail)
     n_total = len(env)
 
@@ -287,7 +275,6 @@ def synthesize_note_env(
         s = _soft_clip(s, drive=1.08)
         buf[i] = s * loud * env[i]
 
-    # No extra end fades needed; ADSR handles attack/release.
     return _pcm16_from_float(buf)
 
 
@@ -303,7 +290,6 @@ def make_render_all_voices_perfect_fifth(sample_rate: int, f_root: float):
     two_pi_over_sr_root = 2.0 * math.pi * f_root / sample_rate
     two_pi_over_sr_f5   = 2.0 * math.pi * f5     / sample_rate
 
-    # Precompute triangle weight tables (band-limited) for root and fifth
     tri_terms_root = _bandlimited_triangle_sample_table(f_root, sample_rate)
     tri_terms_f5   = _bandlimited_triangle_sample_table(f5, sample_rate)
 
@@ -367,7 +353,6 @@ def make_render_all_voices_perfect_fifth(sample_rate: int, f_root: float):
     return render
 
 
-# ===== CONVENIENCE: Bass bed helper (unchanged) =====
 def synthesize_bass_bed(
     duration_s: float,
     loudness: float = 0.25,

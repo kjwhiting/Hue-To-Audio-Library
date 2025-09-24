@@ -9,12 +9,12 @@ from typing import Iterable, Literal, Callable, Optional, Tuple, List
 from converter import image_to_pixel_hsv
 from src.pixel_hsv import PixelHSV
 from src.composer import (
-    compose_demo_bytes,
     write_wav,
     render_code_bytes,
     code_to_seconds,
 )
-from src.synth import SAMPLE_RATE_DEFAULT, ALLOWED_VOICES
+
+from src.synth import SAMPLE_RATE_DEFAULT
 
 # ===== CONFIG / CONSTANTS (EDIT HERE) =========================================
 DEFAULT_BPM = 120
@@ -232,12 +232,7 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
-    if args.demo or not args.image:
-        print("No image specified or --demo provided; rendering built-in demo …")
-        pcm = compose_demo_bytes(bpm=args.bpm, sample_rate=args.sr)
-        out = write_wav(args.out, pcm, args.sr)
-        print(f"Wrote {out.resolve()}  (BPM={args.bpm}, SR={args.sr})")
-        return
+   
 
     compose_from_image(
         image_path=Path(args.image),
