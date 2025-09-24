@@ -9,9 +9,7 @@ from src.synth import synthesize_note, SAMPLE_RATE_DEFAULT
 DEFAULT_BPM = 120
 TEST_FREQUENCY_HZ = 440.0
 VOLUME_MIN = 0.35
-VOLUME_MAX = 0.95
-NOTE_CODES = (7, 8, 9, 10, 11, 12, 13)  
-REST_CODES = (0, 1, 2, 3, 4, 5, 6)      
+VOLUME_MAX = 0.95  
 
 
 def beats_to_seconds(beats, bpm):

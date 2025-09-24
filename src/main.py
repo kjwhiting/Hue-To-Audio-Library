@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from typing import Iterable, Literal, Callable, Optional, Tuple, List
 
-from converter import image_to_pixel_hsv
+from src.converter import image_to_pixel_hsv
 from src.pixel_hsv import PixelHSV
 from src.composer import (
     write_wav,
@@ -122,8 +122,6 @@ def pixels_to_pcm(
     sample_rate: int,
     stride: int = 1,
     *,
-    progress_cb: Optional[Callable[[int, int], None]] = None,
-    render_fn: Callable[[int, int, int, float, float], bytes] = render_code_bytes,
     max_seconds: Optional[float] = None,
 ) -> bytes:
     """
@@ -133,8 +131,6 @@ def pixels_to_pcm(
     """
     if not isinstance(pixels, list):
         pixels = list(pixels)
-    total = (len(pixels) + max(1, stride) - 1) // max(1, stride)
-    step = max(1, total // 100)
 
     out = bytearray()
     done = 0
@@ -151,30 +147,25 @@ def pixels_to_pcm(
         freq = hue_to_freq_c2_c6(px.h_deg)
         loud = saturation_to_loudness(px.s)
 
-        out += render_fn(px.v, bpm, sample_rate, loud, freq)
+        out += render_code_bytes(px.v, bpm, sample_rate, loud, freq)
         elapsed += dur
         done += 1
-
-        if progress_cb and (done % step == 0 or done == total):
-            progress_cb(done, total)
-
-    if progress_cb and done < total:
-        progress_cb(done, total)
     return bytes(out)
 
 
 # ===== CONTROLLER / CLI =======================================================
 def compose_from_image(
-    image_path: str | Path,
-    out_wav: str | Path = "output.wav",
-    bpm: int = DEFAULT_BPM,
-    sample_rate: int = SAMPLE_RATE_DEFAULT,
-    stride: int = PIXEL_STRIDE,
+    image_path,
+    out_wav = "output.wav",
+    bpm = DEFAULT_BPM,
+    sample_rate = SAMPLE_RATE_DEFAULT,
+    stride = PIXEL_STRIDE,
     *,
-    show_progress: bool = True,
-    max_seconds: Optional[float] = DEFAULT_MAX_SECONDS,
-    auto_stride: bool = False,
-) -> Path:
+    show_progress = True,
+    max_seconds = DEFAULT_MAX_SECONDS,
+    auto_stride= False,
+):
+    print(f"Loading {image_path}", end="")
     w, h, px = image_to_pixel_hsv(image_path)
     print(f"Loaded {image_path} -> {w}x{h} pixels (total {len(px)})")
 
@@ -194,7 +185,6 @@ def compose_from_image(
         bpm=bpm,
         sample_rate=sample_rate,
         stride=stride,
-        progress_cb=progress_cb,
         max_seconds=max_seconds,
     )
     out = write_wav(out_wav, pcm, sample_rate)

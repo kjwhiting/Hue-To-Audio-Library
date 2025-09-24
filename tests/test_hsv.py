@@ -1,7 +1,5 @@
-# tests/test_pixel_hsv.py
-from __future__ import annotations
-
 import pytest
+from test_utils import is_equal
 
 from src.pixel_hsv import PixelHSV
 
@@ -57,18 +55,37 @@ def test_reflexivity_symmetry_transitivity():
     assert (a == b) and (b == a)            # symmetric
     assert (a == b) and (b == c) and (a == c)  # transitive
 
+def test_color_red():
+    pix =PixelHSV(255,0,0)
+    assert is_equal(pix.h, 0)
 
-# =========================
-# Hue inversion API
-# =========================
-def test_hue_inversion_cardinal_points():
-    assert PixelHSV.hue_inversion(0) == 0
-    assert PixelHSV.hue_inversion(60) == 300
-    assert PixelHSV.hue_inversion(120) == 240
-    assert PixelHSV.hue_inversion(180) == 180
-    assert PixelHSV.hue_inversion(240) == 120
-    assert PixelHSV.hue_inversion(300) == 60
 
-def test_hue_inversion_normalizes_360_to_0():
-    assert PixelHSV.hue_inversion(360) == 0
+def test_color_orange():
+    pix = PixelHSV(255, 127, 0) 
+    assert is_equal(pix.h, .08)
+
+
+def test_color_yellow():
+    pix = PixelHSV(255, 255, 0)
+    assert is_equal(pix.h, .16)
+
+
+def test_color_green():
+    pix = PixelHSV(0,255,0)
+    assert is_equal(pix.h, .33)
+
+
+def test_color_blue():
+    pix = PixelHSV(0,0,255)
+    assert is_equal(pix.h, .66)
+
+
+def test_color_indigo():
+    pix = PixelHSV(75, 0, 130)
+    assert is_equal(pix.h, .76)
+
+
+def test_color_violet():
+    pix = PixelHSV(148, 0, 211)
+    assert is_equal(pix.h, .78)
 
