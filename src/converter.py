@@ -24,15 +24,13 @@ def pixels_to_beats(pixels, bpm):
     if(is_prime(factors)):
         factors= [2,3,5,7]
     
+    if(len(factors)<4):
+        factors.append([8,16,24, 7])
+    
+    factors = factors[:4]
     beats = math.prod(factors)
-    song_length_minutes = beats/bpm
-
-    # could dynamically set max length of song here
-    # for now default to 2 minutes
-    while song_length_minutes > 2: 
-        factors.pop()
-        beats = math.prod(factors)
-        song_length_minutes = beats/bpm
+    
+    song_length_minutes = 1
 
     return (factors, beats, song_length_minutes)
 

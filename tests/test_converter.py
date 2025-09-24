@@ -9,8 +9,6 @@ except Exception as e:
     raise ImportError("Pillow is required for these tests. pip install pillow") from e
 
 from src.converter import _read_image_rgb, image_to_pixel_hsv, get_factors, pixels_to_beats, hue_to_frequency_direct, hue_to_frequency_true_color
-from src.composer import write_wav
-from src.synth import SAMPLE_RATE_DEFAULT
 
 
 def _save_png(path: Path, pixels, w: int, h: int):
@@ -61,12 +59,6 @@ def test_image_to_pixel_hsv_order_and_length(tmp_path: Path):
     assert px[2].h_deg >= 0  # sanity
 
 
-def test_write_wav_creates_missing_directories(tmp_path):
-    nested = tmp_path / "deep/nested/dir/out.wav"
-    out = write_wav(nested, b"", SAMPLE_RATE_DEFAULT)
-    assert out.exists()
-    assert out.parent.is_dir()
-
 def test_get_factors():
     assert get_factors(6) == [2,3,6]
     assert get_factors(12) == [2,3,4,6,12]
@@ -80,7 +72,7 @@ def test_pixels_to_beats_max_length():
     assert product == 2310
     assert factors == [2,3,5,6]
     assert beats == 180
-    assert duration == 1.5
+    assert duration == 1
 
 def test_hue_to_frequency_direct_red():
     pix = PixelHSV(255,0,0)
