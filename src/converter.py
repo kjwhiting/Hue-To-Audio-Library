@@ -33,6 +33,7 @@ def get_averages(pixels):
     return (sat_avg, value_avg)
 
 def pixels_to_beats(value_avg):
+    print("converting pixels to beats")
     tracks =[random.randint(2,4)]
     for i in range(0, int(value_avg*8)):
         rand = random.randint(3,17)
