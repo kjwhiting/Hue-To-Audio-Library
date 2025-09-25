@@ -33,9 +33,6 @@ def _save_jpeg(path: Path, pixels: List[Tuple[int, int, int]], w: int, h: int) -
 
 
 def _values_v_for_code(code: int) -> float:
-    if code < 0 or code > 13:
-        raise ValueError("code must be in 0..13")
-
     if code == 0:
         return 0.0
     if 1 <= code <= 6:
@@ -71,15 +68,22 @@ def create_test_jpgs(output_dir: str | Path = "test_images") -> Dict[str, Path]:
     hue_pixels: List[Tuple[int, int, int]] = []
     for deg in range(0, 361):
         h = (deg % 360) / 360.0  # 360 maps to 0
+        hue_pixels.append( _hsv_to_rgb_bytes(h, .5, .75))
+    hues_path = _save_jpeg(outdir / "hues-a.jpg", hue_pixels, w=361, h=1)
+
+    # ---- 1) Hues: 0..360 ----
+    hue_pixels: List[Tuple[int, int, int]] = []
+    for deg in range(0, 361):
+        h = (deg % 360) / 360.0  # 360 maps to 0
         hue_pixels.append( _hsv_to_rgb_bytes(h, 1.0, 1.0))
     hues_path = _save_jpeg(outdir / "hues.jpg", hue_pixels, w=361, h=1)
 
     # ---- 2) Values: codes 0..13 at hue=0, sat=1 ----
     value_pixels: List[Tuple[int, int, int]] = []
-    for code in range(0, 14):
-        v = _values_v_for_code(code)
+    for code in range(0, 1_000):
+        v = code/1000
         value_pixels.append(_hsv_to_rgb_bytes(0.0, 1.0, v))
-    values_path = _save_jpeg(outdir / "values.jpg", value_pixels, w=14, h=1)
+    values_path = _save_jpeg(outdir / "values.jpg", value_pixels, w=1000, h=1)
 
     # ---- 3) Saturations: 0..10_000 at hue=0, value=1 ----
     sat_pixels: List[Tuple[int, int, int]] = []
